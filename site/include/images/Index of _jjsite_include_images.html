@@ -1,0 +1,816 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<!-- saved from url=(0047)https://ats-sb.adobe.com/jjsite/include/images/ -->
+<html><script>(function() {
+		window.addEventListener('message', function(event) {
+			if (
+				event.data &&
+				event.data.id &&
+				typeof event.data.id.startsWith === 'function' &&
+				event.data.id.startsWith('adobeExperienceCloudDebuggerContentMessagingIdentifier-')
+			) {
+				event.stopImmediatePropagation();
+			}
+		},
+		{capture: true});
+	})();</script><script>
+		(function() {
+			const contentScriptEventTrigger = function(data) {
+				window.postMessage({ id:'adobeExperienceCloudDebuggerContentMessagingIdentifier-1', data: data });
+			}
+			const DATA_LAYER_LOCAL_STORAGE_KEY =
+  "com.adobe.experiencePlatformDebugger.dataLayer.key";
+const dataLayerKey = window.localStorage.getItem(DATA_LAYER_LOCAL_STORAGE_KEY);
+
+if (dataLayerKey) {
+  // sindresorhus/on-change
+  // MIT - License
+  // https://github.com/sindresorhus/on-change
+  const PATH_SEPARATOR = ".";
+  const TARGET = Symbol("target");
+  const UNSUBSCRIBE = Symbol("unsubscribe");
+
+  const isPrimitive = value =>
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function");
+
+  const isBuiltinWithoutMutableMethods = value =>
+    value instanceof RegExp || value instanceof Number;
+
+  const isBuiltinWithMutableMethods = value => value instanceof Date;
+
+  const concatPath = (path, property) => {
+    let ret = path;
+    if (property && property.toString) {
+      if (path) {
+        ret += PATH_SEPARATOR;
+      }
+
+      ret += property.toString();
+    }
+
+    return ret;
+  };
+
+  const walkPath = (path, callback) => {
+    let index;
+    let remainingPath = path;
+    while (remainingPath) {
+      index = remainingPath.indexOf(PATH_SEPARATOR);
+
+      if (index === -1) {
+        index = remainingPath.length;
+      }
+
+      callback(remainingPath.slice(0, index));
+
+      remainingPath = remainingPath.slice(index + 1);
+    }
+  };
+
+  const shallowClone = value => {
+    if (Array.isArray(value)) {
+      return value.slice();
+    }
+
+    return { ...value };
+  };
+
+  const onChange = (object, updateDataLayer, options = {}) => {
+    const proxyTarget = Symbol("ProxyTarget");
+    let inApply = false;
+    let changed = false;
+    let applyPath;
+    let applyPrevious;
+    let isUnsubscribed = false;
+    const equals = options.equals || Object.is;
+    let propCache = new WeakMap();
+    let pathCache = new WeakMap();
+    let proxyCache = new WeakMap();
+    let boundUpdateDataLayer;
+
+    const handleChange = (path, property, previous, value) => {
+      if (isUnsubscribed) {
+        return;
+      }
+
+      if (!inApply) {
+        boundUpdateDataLayer(concatPath(path, property), value, previous);
+        return;
+      }
+
+      if (
+        inApply &&
+        applyPrevious &&
+        previous !== undefined &&
+        value !== undefined &&
+        property !== "length"
+      ) {
+        let item = applyPrevious;
+
+        if (path !== applyPath) {
+          const appliedPath = path.replace(applyPath, "").slice(1);
+
+          walkPath(appliedPath, key => {
+            item[key] = shallowClone(item[key]);
+            item = item[key];
+          });
+        }
+
+        item[property] = previous;
+      }
+
+      changed = true;
+    };
+
+    const getOwnPropertyDescriptor = (target, property) => {
+      let props = propCache ? propCache.get(target) : undefined;
+
+      if (props) {
+        return props;
+      }
+
+      props = new Map();
+      propCache.set(target, props);
+
+      let prop = props.get(property);
+      if (!prop) {
+        prop = Reflect.getOwnPropertyDescriptor(target, property);
+        props.set(property, prop);
+      }
+
+      return prop;
+    };
+
+    const invalidateCachedDescriptor = (target, property) => {
+      const props = propCache ? propCache.get(target) : undefined;
+
+      if (props) {
+        props.delete(property);
+      }
+    };
+
+    const buildProxy = (value, path) => {
+      if (isUnsubscribed) {
+        return value;
+      }
+
+      pathCache.set(value, path);
+
+      let proxy = proxyCache.get(value);
+
+      if (proxy === undefined) {
+        proxy = new Proxy(value, handler);
+        proxyCache.set(value, proxy);
+      }
+
+      return proxy;
+    };
+
+    const unsubscribe = target => {
+      isUnsubscribed = true;
+      propCache = null;
+      pathCache = null;
+      proxyCache = null;
+
+      return target;
+    };
+
+    const ignoreChange = property =>
+      isUnsubscribed ||
+      (options.ignoreSymbols === true && typeof property === "symbol");
+
+    const handler = {
+      get(target, property, receiver) {
+        if (property === proxyTarget || property === TARGET) {
+          return target;
+        }
+
+        if (property === UNSUBSCRIBE && pathCache.get(target) === "") {
+          return unsubscribe(target);
+        }
+
+        const value = Reflect.get(target, property, receiver);
+        if (
+          isPrimitive(value) ||
+          isBuiltinWithoutMutableMethods(value) ||
+          property === "constructor" ||
+          options.isShallow === true
+        ) {
+          return value;
+        }
+
+        // Preserve invariants
+        const descriptor = getOwnPropertyDescriptor(target, property);
+        if (descriptor && !descriptor.configurable) {
+          if (descriptor.set && !descriptor.get) {
+            return undefined;
+          }
+
+          if (descriptor.writable === false) {
+            return value;
+          }
+        }
+
+        return buildProxy(value, concatPath(pathCache.get(target), property));
+      },
+
+      set(target, property, value, receiver) {
+        const proxyTargetValue =
+          value && value[proxyTarget] !== undefined
+            ? value[proxyTarget]
+            : value;
+
+        const ignore = ignoreChange(property);
+        const previous = ignore
+          ? null
+          : Reflect.get(target, property, receiver);
+        const result = Reflect.set(
+          target[proxyTarget] || target,
+          property,
+          proxyTargetValue
+        );
+
+        if (!ignore && !equals(previous, proxyTargetValue)) {
+          handleChange(
+            pathCache.get(target),
+            property,
+            previous,
+            proxyTargetValue
+          );
+        }
+
+        return result;
+      },
+
+      defineProperty(target, property, descriptor) {
+        const result = Reflect.defineProperty(target, property, descriptor);
+
+        if (!ignoreChange(property)) {
+          invalidateCachedDescriptor(target, property);
+
+          handleChange(
+            pathCache.get(target),
+            property,
+            undefined,
+            descriptor.value
+          );
+        }
+
+        return result;
+      },
+
+      deleteProperty(target, property) {
+        if (!Reflect.has(target, property)) {
+          return true;
+        }
+
+        const ignore = ignoreChange(property);
+        const previous = ignore ? null : Reflect.get(target, property);
+        const result = Reflect.deleteProperty(target, property);
+
+        if (!ignore) {
+          invalidateCachedDescriptor(target, property);
+
+          handleChange(pathCache.get(target), property, previous);
+        }
+
+        return result;
+      },
+
+      apply(target, thisArg, argumentsList) {
+        const compare = isBuiltinWithMutableMethods(proxyTargetThisArg);
+
+        const proxyTargetThisArg = compare ? thisArg[proxyTarget] : thisArg;
+
+        if (!inApply) {
+          inApply = true;
+
+          if (compare) {
+            applyPrevious = proxyTargetThisArg.valueOf();
+          }
+
+          if (
+            Array.isArray(proxyTargetThisArg) ||
+            toString.call(proxyTargetThisArg) === "[object Object]"
+          ) {
+            applyPrevious = shallowClone(proxyTargetThisArg[proxyTarget]);
+          }
+
+          applyPath = pathCache.get(target);
+          applyPath = applyPath.slice(
+            0,
+            Math.max(applyPath.lastIndexOf(PATH_SEPARATOR), 0)
+          );
+
+          const result = Reflect.apply(
+            target,
+            proxyTargetThisArg,
+            argumentsList
+          );
+
+          inApply = false;
+
+          if (
+            changed ||
+            (compare && !equals(applyPrevious, proxyTargetThisArg.valueOf()))
+          ) {
+            handleChange(
+              applyPath,
+              "",
+              applyPrevious,
+              proxyTargetThisArg[proxyTarget] || proxyTargetThisArg
+            );
+            applyPrevious = null;
+            changed = false;
+          }
+
+          return result;
+        }
+
+        return Reflect.apply(target, proxyTargetThisArg, argumentsList);
+      }
+    };
+
+    const proxy = buildProxy(object, "");
+    boundUpdateDataLayer = updateDataLayer.bind(proxy);
+
+    return proxy;
+  };
+
+  onChange.target = proxy => proxy[TARGET] || proxy;
+  onChange.unsubscribe = proxy => proxy[UNSUBSCRIBE] || proxy;
+
+  let proxy;
+  let previousDataLayer;
+
+  const _serialize = dataLayer => {
+    try {
+      return JSON.stringify({ ...dataLayer }, null, 2);
+    } catch (e) {
+      return JSON.stringify(dataLayer, null, 2);
+    }
+  };
+
+  const _notify = dataLayer => {
+    contentScriptEventTrigger({
+      data: {
+        dataLayer
+      },
+      timestamp: Date.now(),
+      timeSincePageLoad: window.performance.now()
+    });
+  };
+
+  const onDataLayerUpdate = () => {
+    const dataLayer = _serialize(this);
+
+    if (previousDataLayer !== dataLayer) {
+      previousDataLayer = dataLayer;
+      _notify(dataLayer);
+    }
+  };
+
+  const onDataLayerSet = newDataLayer => {
+    const dataLayer = _serialize(newDataLayer);
+    if (!previousDataLayer || previousDataLayer !== dataLayer) {
+      previousDataLayer = dataLayer;
+      _notify(dataLayer);
+    }
+  };
+
+  Object.defineProperty(window, dataLayerKey, {
+    get() {
+      return proxy;
+    },
+    set(newDataLayer) {
+      onDataLayerSet(newDataLayer);
+      proxy = onChange(newDataLayer, onDataLayerUpdate);
+    },
+    enumerable: true,
+    configurable: true
+  });
+
+  const oldObjectDefine = Object.defineProperty.bind(Object);
+  Object.defineProperty = (obj, prop, descriptor) => {
+    if (prop === dataLayerKey) {
+      console.debug(
+        "Data layer being overwritten by Object.defineProperty(). Falling back to polling..."
+      );
+
+      const pollForChanges = () => {
+        const dataLayer = _serialize(window[dataLayerKey]);
+        if (previousDataLayer !== dataLayer) {
+          previousDataLayer = dataLayer;
+          _notify(dataLayer);
+        }
+        window.requestAnimationFrame(pollForChanges);
+      };
+
+      window.requestAnimationFrame(pollForChanges);
+    }
+    return oldObjectDefine(obj, prop, descriptor);
+  };
+}
+
+		})();
+	</script><script>
+		(function() {
+			const contentScriptEventTrigger = function(data) {
+				window.postMessage({ id:'adobeExperienceCloudDebuggerContentMessagingIdentifier-2', data: data });
+			}
+			// https://github.com/adobe/alloy/wiki/Monitoring-Hooks
+
+// This script is run within an immediately executed function, so variables declared here
+// are local to this script only.
+const orgIdsByInstanceName = {};
+
+window.__alloyMonitors = window.__alloyMonitors || [];
+window.__alloyMonitors.push({
+  onBeforeNetworkRequest(data) {
+    setTimeout(() => {
+      contentScriptEventTrigger({
+        name: "onAlloyNetworkRequest",
+        data: {
+          ...data,
+          orgId: orgIdsByInstanceName[data.instanceName]
+        }
+      });
+    });
+  },
+  onNetworkResponse(data) {
+    // There are fields in data that don't serialize well, so we only include parsedBody
+    setTimeout(() => {
+      contentScriptEventTrigger({
+        name: "onAlloyNetworkResponse",
+        data: {
+          parsedBody: data.parsedBody,
+          orgId: orgIdsByInstanceName[data.instanceName]
+        }
+      });
+    });
+  },
+  onNetworkError(data) {
+    setTimeout(() => {
+      contentScriptEventTrigger({ name: "onAlloyNetworkError", data });
+    });
+  },
+  onInstanceConfigured(data) {
+    // We keep a cache of orgIdsByInstanceNames here because the response to getLibraryInfo
+    // may happen after a network request already occurred.
+    orgIdsByInstanceName[data.instanceName] = data.config.orgId;
+    setTimeout(() => {
+      window[data.instanceName]("getLibraryInfo").then(({ libraryInfo }) => {
+        // The configuration section uses debugEnabled to know the initial state
+        const debugEnabledSessionStorage = window.sessionStorage.getItem(
+          `com.adobe.alloy.instance.${data.instanceName}.debug`
+        );
+        const debugEnabled =
+          debugEnabledSessionStorage === "true" ||
+          (data.config.debugEnabled && debugEnabledSessionStorage === null);
+
+        contentScriptEventTrigger({
+          name: "onInstanceConfigured",
+          data: {
+            namespace: data.instanceName,
+            edgeConfigId: data.config.datastreamId ?? data.config.edgeConfigId,
+            edgeDomain: data.config.edgeDomain,
+            orgId: data.config.orgId,
+            // we only use the version (for now), so we don't need to send anything else.
+            libraryInfo: {
+              version: libraryInfo.version
+            },
+            debugEnabled
+          }
+        });
+      });
+    });
+  }
+});
+
+		})();
+	</script><script>
+		(function() {
+			const contentScriptEventTrigger = function(data) {
+				window.postMessage({ id:'adobeExperienceCloudDebuggerContentMessagingIdentifier-3', data: data });
+			}
+			/**
+ * Hooks into both DTM's and Launch's logging mechanisms in order to capture all log messages and
+ * send them to the UI to display to the user
+ */
+function notifyContentScript(log) {
+  contentScriptEventTrigger({
+    data: log,
+    timestamp: Date.now(),
+    timeSincePageLoad: window.performance.now()
+  });
+}
+
+// Create a stub _satellite with the common methods. Without this, this injected script will
+// break pages that have logic on them like "window._satellite && window._satellite.pageBottom()"
+const noop = () => {};
+const satelliteStub = {};
+[
+  "getVar",
+  "getVisitorId",
+  "notify",
+  "pageBottom",
+  "readCookie",
+  "setCookie",
+  "setDebug",
+  "setVar",
+  "track"
+].forEach(prop => {
+  satelliteStub[prop] = noop;
+});
+
+window._satellite = {
+  ...satelliteStub,
+  ...window._satellite
+};
+window._satellite.override = window._satellite.override || {};
+
+// Hook into _satellite in order to capture DTM logs
+if (window.Object && window.Object.defineProperty) {
+  window.Object.defineProperty(
+    window._satellite.override,
+    "adobe.aepDebugger.dtmInitHook",
+    {
+      enumerable: true,
+      get() {
+        onSatelliteInit();
+        return "";
+      },
+      set() {}
+    }
+  );
+}
+
+function onSatelliteInit() {
+  // This function will run when DTM is loaded on the page. We use it to hook into DTM logs
+  const { _satellite } = window;
+  if (_satellite.Logger) {
+    _satellite.Logger.keepLimit = 9999;
+  }
+
+  // override notify
+  // Reason: we want to intercept messages that go through here
+  // without worrying about limits or messing anything up internally
+  const originalNotify = _satellite.notify;
+  _satellite.notify = (message, level) => {
+    const logLevel = ["log", "log", "log", "info", "warn", "error"];
+
+    // call original
+    originalNotify(message, level);
+
+    const log = {
+      solution: "dtm",
+      solutions: ["dtm"],
+      level: logLevel[level] || "log",
+      message: ""
+    };
+
+    // make sure that we have a message
+    if (message && typeof message === "string") {
+      // only add it
+      log.message = message;
+
+      // check to see what solution it came from
+      if (message.indexOf("Adobe Analytics:") !== -1) {
+        log.solutions.push("analytics");
+      } else if (message.indexOf("Test & Target:") !== -1) {
+        log.solutions.push("target");
+      } else if (message.indexOf("Visitor ID:") !== -1) {
+        log.solutions.push("visitorService");
+      } else if (message.indexOf("AdLens:") !== -1) {
+        log.solutions.push("mediaOptimizer");
+      }
+    }
+    notifyContentScript(log);
+  };
+}
+
+function _overrideConsoleLogFunction(prefix, solution, level) {
+  const originalFunction = console[level];
+  console[level] = (...args) => {
+    const argsAsArray = Array.prototype.slice.call(args);
+    originalFunction.apply(console, argsAsArray);
+    const mappedArgs = argsAsArray.map(arg => {
+      let result = "";
+      if (arg && typeof arg.toString === "function") {
+        result = arg.toString();
+      }
+      if (!result || result === "[object Object]") {
+        try {
+          result = JSON.stringify(arg);
+        } catch (e) {
+          return "";
+        }
+      }
+      return result;
+    });
+
+    const message = mappedArgs.join(" ");
+
+    if (typeof message === "string") {
+      if (message.indexOf(prefix) === 0) {
+        const log = {
+          solution,
+          solutions: [solution],
+          level,
+          message,
+          searchIndex: message,
+          params: mappedArgs
+        };
+
+        // check to see what solution it came from
+        if (message.indexOf("[Adobe Analytics]") !== -1) {
+          log.solutions.push("analytics");
+        } else if (message.indexOf("[Adobe Target]") !== -1) {
+          log.solutions.push("target");
+        } else if (message.indexOf("[Experience Cloud ID Service]") !== -1) {
+          log.solutions.push("visitorService");
+        } else if (message.indexOf("[Adobe Media Optimizer]") !== -1) {
+          log.solutions.push("mediaOptimizer");
+        }
+        notifyContentScript(log);
+      }
+    }
+  };
+}
+
+/**
+ * Overrides the various console.* methods in order to intercept messages that
+ * are sent to the console by launch. A message was sent be launch if it starts
+ * with the rocket emoji &#128640;. Note that this is a somewhat brittle solution
+ * since if the emoji ever changes this integration will break. However this
+ * is the only solution that works for now.
+ *
+ * Any messages that are not prefixed with the rocket emoji are ignored and passed
+ * through to the original console function
+ */
+function _overrideConsoleForLaunch() {
+  const prefix = "&#128640;";
+  ["error", "info", "log", "warn"].forEach(
+    _overrideConsoleLogFunction.bind(null, prefix, "launch")
+  );
+}
+
+/**
+ * Intercepts console messages made by alloy (prefixed with [alloy]) and notifies content script about each one.
+ * Note that this is a brittle solution and should not be used long term.
+ *
+ * Ideally there will be some debugging hooks built into alloy itself that we can connect to
+ */
+function _overrideConsoleForAlloy() {
+  window.__alloyNS = [];
+  const originalPush = window.__alloyNS.push;
+  window.__alloyNS.push = (namespace, ...rest) => {
+    ["error", "info", "log", "warn"].forEach(
+      _overrideConsoleLogFunction.bind(null, `[${namespace}]`, "alloy")
+    );
+
+    originalPush.apply(
+      window.__alloyNS,
+      Array.prototype.slice.call([namespace, ...rest])
+    );
+  };
+}
+
+/**
+ * Overrides console.debug and console.warn methods in order to intercept messages that
+ * are sent to the console by at.js. A message was sent be at.js if it starts
+ * with "AT:".
+ *
+ * Note that this is a somewhat brittle solution
+ * since if the prefix ever changes this integration will break. However this
+ * is the only solution that works for now, since at.js does not have any debugging hooks.
+ * If this ever breaks, the first place to look is at the logger implementation in at.js
+ * to see if they changed the prefix or started using different console functions. Check
+ * https://git.corp.adobe.com/TnT/atjs-library-v2/blob/master/src/delivery/monitoring/logger/helper.js
+ *
+ * Any messages that are not prefixed with "AT:" are ignored and passed
+ * through to the original console function
+ */
+function _overrideConsoleForAtJs() {
+  const prefix = "AT:";
+  ["debug", "warn"].forEach(
+    _overrideConsoleLogFunction.bind(null, prefix, "target")
+  );
+}
+
+_overrideConsoleForLaunch();
+_overrideConsoleForAlloy();
+_overrideConsoleForAtJs();
+
+// Once the page has finished loading, remove _satellite if both DTM and Launch were not found
+window.addEventListener("load", () => {
+  if (!_hasDtm() && !_hasLaunch()) {
+    delete window._satellite;
+  }
+});
+
+/**
+ * @returns {boolean} whether launch is present on the page
+ */
+function _hasLaunch() {
+  return !!(window._satellite && window._satellite._container);
+}
+
+/**
+ * @returns {boolean} whether DTM is present on the page
+ */
+function _hasDtm() {
+  return !!(window._satellite && window._satellite.configurationSettings);
+}
+
+		})();
+	</script><script>
+		(function() {
+			const contentScriptEventTrigger = function(data) {
+				window.postMessage({ id:'adobeExperienceCloudDebuggerContentMessagingIdentifier-4', data: data });
+			}
+			window.___target_traces = window.___target_traces || [];
+const originalPush = window.___target_traces.push;
+
+window.___target_traces.push = function targetTracePush(trace) {
+  contentScriptEventTrigger({ trace });
+  originalPush.call(this, trace);
+};
+
+		})();
+	</script><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+  <title>Index of /jjsite/include/images</title>
+ </head>
+ <body>
+<h1>Index of /jjsite/include/images</h1>
+<ul><li><a href="https://ats-sb.adobe.com/jjsite/include/"> Parent Directory</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/1374193855119.jpg"> 1374193855119.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/AEM6.jpg"> AEM6.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/All_access_pass.jpg"> All_access_pass.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/On-Demand.jpg"> On-Demand.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/SkillsAssessmentBanner-1.jpg"> SkillsAssessmentBanner-1.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/Tarin_theTrainer.jpg"> Tarin_theTrainer.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/active1.jpg"> active1.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/active2.jpg"> active2.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/active3.jpg"> active3.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/active4.jpg"> active4.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/active_men.jpg"> active_men.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/ats-banner.jpg"> ats-banner.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/background-OLD-JJ-GREEN.png"> background-OLD-JJ-GREEN.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/background.jpg"> background.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/black_luggage.jpg"> black_luggage.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/blender.jpg"> blender.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/c-segment1-quiz3.png"> c-segment1-quiz3.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/c-segment2-quiz3.png"> c-segment2-quiz3.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/calendar-quiz2.png"> calendar-quiz2.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/charge_site.png"> charge_site.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/chargecard_greenfield.png"> chargecard_greenfield.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/chargecard_greenfield_OLD.png"> chargecard_greenfield_OLD.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/currency.jpg"> currency.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/download.jpg"> download.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/dress.jpg"> dress.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/email1.jpg"> email1.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/email2.jpg"> email2.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/fa_man.jpg"> fa_man.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/geometrixx_large_body_bath.png"> geometrixx_large_body_bath.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/geometrixx_large_logotype.png"> geometrixx_large_logotype.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/greenclutch.jpg"> greenclutch.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/hotel.jpg"> hotel.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/hotel_sitesection.jpg"> hotel_sitesection.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj1-OLD.ico"> jj1-OLD.ico</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj1.ico"> jj1.ico</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_black-OLD.png"> jj_logo_black-OLD.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_black-old.png"> jj_logo_black-old.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_black.png"> jj_logo_black.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_green-OLD.png"> jj_logo_green-OLD.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_green-old.png"> jj_logo_green-old.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jj_logo_green.png"> jj_logo_green.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic-OLD.jpg"> jjhomegraphic-OLD.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic.jpg"> jjhomegraphic.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic_b.jpg"> jjhomegraphic_b.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic_l1.jpg"> jjhomegraphic_l1.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic_t1.jpg"> jjhomegraphic_t1.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/jjhomegraphic_t2.jpg"> jjhomegraphic_t2.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/leather_shoes.jpg"> leather_shoes.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/leftNavigationArrow.png"> leftNavigationArrow.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-active2.jpg"> man-active2.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-active3.jpg"> man-active3.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-active4.jpg"> man-active4.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-apparel2.jpg"> man-apparel2.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-apparel3.jpg"> man-apparel3.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/man-apparel4.jpg"> man-apparel4.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/reddress.jpg"> reddress.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/redtie.jpg"> redtie.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/rightNavigationArrow.png"> rightNavigationArrow.png</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/sandals.jpg"> sandals.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/sequin_dress.jpg"> sequin_dress.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/shipping.jpg"> shipping.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/silk_dress.jpg"> silk_dress.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/stainless_pot.jpg"> stainless_pot.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/teapot.jpg"> teapot.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/thankyou.jpg"> thankyou.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/toaster.jpg"> toaster.jpg</a></li>
+<li><a href="https://ats-sb.adobe.com/jjsite/include/images/whitepapers.jpg"> whitepapers.jpg</a></li>
+</ul>
+
+</body></html>
